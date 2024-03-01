@@ -8,3 +8,10 @@ Usage:
 - Edit injector.ps1 and point to webserver
 - Run injector.ps1
 ```
+
+*V2*
+Usage: 
+```
+- Point merged_v2 to bin file
+- Run merged_v2.ps1
+```
